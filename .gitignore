@@ -1,0 +1,40 @@
+# Private / user documents
+*.docx
+*.doc
+*.pdf
+*.wps
+~$*
+
+# Generated outputs and local test artifacts
+output/
+outputs/
+tmp*/
+*.bak
+*.bak_*
+*.audit*.txt
+*_report.txt
+*_dump.txt
+*_scan*.txt
+*_inspect*.txt
+
+# Handover/private notes
+HANDOVER*.md
+HANDOVER*.txt
+memory/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local env
+.env
+.venv/
+venv/
