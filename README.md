@@ -1,148 +1,202 @@
-# Paper Thesis Formatter
+# CQYT Thesis Formatter 🍜
 
-A Python-based `.docx` thesis formatting toolkit for normalizing university thesis documents and running automated acceptance checks.
+一个专治 `.docx` 论文格式焦虑的小工具。
 
-> Current rule profile: thesis-style documents similar to Chongqing Yitong College graduation thesis formatting. The project is designed as a reusable formatting pipeline, not as a one-off document edit.
+它不会替你写论文，也不会替导师点头；它主要负责把 Word 论文里的标题、正文、表格、摘要、图片、目录保护等格式问题尽量收拾整齐。简单说：**让论文格式少发疯一点**。
 
-## What it does
+> 当前规则主要面向重庆移通学院毕业论文/设计一类格式。其他学校也许能跑，但别指望它一夜之间学会全国高校格式规范——它不是教务处成精。
 
-The formatter works directly on WordprocessingML inside `.docx` files. It can:
+---
 
-- format first/second/third-level headings;
-- normalize body text font, alignment, line spacing, and first-line indent;
-- format Chinese/English abstract headings and front-matter sections where detectable;
-- format tables toward a three-line-table style;
-- preserve images and media relationships;
-- keep existing table/image counts stable;
-- preserve an existing source table of contents (TOC) by default;
-- run a multi-step verifier after formatting.
+## 它能干什么？
 
-## Important TOC policy
+目前主要能力：
 
-The TOC is treated as a protected area by default.
+- 统一一级、二级、三级标题格式；
+- 统一正文宋体/Times New Roman、小四、两端对齐、首行缩进等；
+- 处理中文摘要、英文摘要等前置部分；
+- 尽量整理表格为三线表方向；
+- 保留图片和媒体关系，避免“图呢？我图呢？”；
+- 检查标题、表格、图片、长正文有没有丢；
+- 默认保护原目录，不乱碰目录；
+- 跑一套自动验收脚本，帮你先筛掉明显灾难。
 
-The formatter does **not** rebuild, update, or restyle the TOC by default because Word TOC fields are fragile and automatic updates can unexpectedly change layout, page numbers, or other document formatting.
+一句话：**它是论文格式清洁工，不是论文代写侠。**
 
-Current default behavior:
+---
 
-- if the source document already contains a TOC, the source TOC block is restored into the output document;
-- TOC text, page numbers, tabs, hidden fields, and internal structure are preserved as much as possible;
-- if the source document has no detectable TOC, the formatter should fail with a human-action-needed status instead of inventing a fake TOC.
+## 目录策略：别碰目录，真的
 
-If you need automatic TOC generation or page-number updates, implement it as an explicit opt-in feature and inspect the result manually in Microsoft Word.
+经过现实毒打，本项目现在默认把目录当成保护区。
 
-## Requirements
+默认策略：
 
-- Python 3.10+
-- `lxml`
-- A `.docx` input file
+- 不重建目录；
+- 不自动更新目录页码；
+- 不改目录样式；
+- 不拆目录字段；
+- 如果源文档有目录，就尽量原样恢复到输出文档；
+- 如果源文档没目录，就直接失败并提示需要人工处理。
 
-Install dependency:
+为什么这么怂？
+
+因为 Word 的目录是个脆皮千层饼：字段、制表位、页码、隐藏结构、样式混在一起。你以为你只是动了一根头发，它可能直接把头套摘了。
+
+所以原则是：
+
+```text
+目录能保留就保留；没有就人工补；不要让脚本瞎造。
+```
+
+如果以后要做自动目录更新，建议做成显式参数，比如 `--update-toc`，并且更新后必须人工打开 Word 检查。
+
+---
+
+## 安装依赖
+
+需要 Python 3.10+。
+
+安装依赖：
 
 ```bash
 pip install lxml
 ```
 
-Windows is the primary tested environment. The XML-only pipeline should be mostly platform-independent, but Word rendering still depends on Microsoft Word/WPS/LibreOffice behavior.
+目前主要在 Windows + Word/WPS 环境下测试。XML 处理本身不太挑系统，但 Word 怎么显示，Word 自己说了算。
 
-## Quick start
+---
+
+## 快速使用
 
 ```bash
 python scripts/format_paper_xml_only.py "input.docx" "output.docx"
 python scripts/verify_all_sections_v1.py "input.docx" "output.docx"
 ```
 
-If the verifier prints:
+如果看到：
 
 ```text
 VERIFY_ALL_FAILURE_COUNT 0
 RESULT 通过
 ```
 
-then the output passed the current automated checks.
+说明它通过了当前自动检查。
 
-## Recommended workflow
+注意，是“自动检查通过”，不是“导师已经微笑点头”。最后还是要自己打开 Word 看一遍。
 
-1. Make a backup of your thesis document.
-2. Ensure the input is `.docx`.
-3. Run the formatter.
-4. Run the full verifier.
-5. Open the output in Word and manually inspect:
-   - TOC appearance and page numbers;
-   - abstract/front matter;
-   - headings and pagination;
-   - tables;
-   - images and captions;
-   - headers/footers/page numbers.
-6. Only submit after manual review.
+---
 
-## Acceptance checks
+## 推荐工作流
 
-Main gate:
+1. 备份原论文。
+2. 确保输入是 `.docx`。
+3. 跑格式化脚本。
+4. 跑总验收脚本。
+5. 打开输出文件人工检查：
+   - 目录；
+   - 摘要；
+   - 标题；
+   - 正文；
+   - 表格；
+   - 图片；
+   - 页眉页脚；
+   - 页码；
+   - 分页。
+6. 确认没问题后再提交。
+
+别跳第 5 步。跳了它，Word 就会在你最赶时间的时候给你表演魔术。
+
+---
+
+## 主要验收脚本
+
+总入口：
 
 ```bash
 python scripts/verify_all_sections_v1.py "input.docx" "output.docx"
 ```
 
-The full verifier calls multiple checks, including structure, heading consistency, formatting coverage, text preservation, TOC preservation, media/table inspection, blank paragraph checks, and document integrity checks.
+它会调用一组检查，包括：
 
-Notable helper checks include:
+- `verify_toc_preserved_v1.py`：目录是否保留；
+- `verify_headings_against_source_v1.py`：标题数量/结构有没有变；
+- `verify_headings_strict_v1.py`：标题格式是否靠谱；
+- `audit_formatting_coverage_v1.py`：正文、表格、图片等是否覆盖；
+- `diff_docx_text_v1.py`：长正文有没有丢；
+- `audit_docx_integrity_v1.py`：docx 内部结构有没有明显问题；
+- `inspect_media_tables.py`：图片/表格扫描；
+- `verify_blank_single_font_v1.py`、`verify_strict_indent_blank_v1.py`：空白段和缩进检查。
 
-```bash
-python scripts/verify_headings_against_source_v1.py "input.docx" "output.docx"
-python scripts/verify_toc_preserved_v1.py "input.docx" "output.docx"
-python scripts/audit_formatting_coverage_v1.py "input.docx" "output.docx"
-python scripts/diff_docx_text_v1.py "input.docx" "output.docx"
-python scripts/audit_docx_integrity_v1.py "output.docx"
-```
+---
 
-## Privacy and test data
+## 隐私说明
 
-This repository intentionally does **not** include private thesis files, generated outputs, or local test documents.
+这个仓库不包含任何测试论文、用户论文、生成结果或本地私有文件。
 
-Do not commit:
+请不要提交：
 
-- `.docx`, `.doc`, `.pdf`, `.wps` files containing thesis content;
-- generated `output/` or `pipeline/` folders;
-- handover notes or private debugging logs;
-- personal templates unless you have permission to publish them.
+- `.docx` / `.doc` / `.pdf` / `.wps`；
+- `output/`、`pipeline/` 等生成目录；
+- 私人论文内容；
+- 学生姓名、学号、导师信息等个人信息；
+- API key、token、账号密码。
 
-The `.gitignore` is configured to exclude common private/generated document files.
+`.gitignore` 已经尽量挡住这些东西，但别完全指望它。隐私这事儿，最好人脑也参与一下。
 
-## Limitations
+---
 
-This project is not a replacement for human review.
+## 已知限制
 
-Known limitations:
+它不是万能格式神灯。
 
-- only `.docx` is supported directly;
-- TOC generation/updating is not automatic by default;
-- school-specific templates may require additional rule profiles;
-- complex fields, section breaks, floating objects, equations, and legacy Word structures can behave differently across Word/WPS/LibreOffice;
-- automated checks are conservative but cannot guarantee visual perfection;
-- generated output must still be opened and reviewed manually.
+目前限制包括：
 
-## Disclaimer
+- 直接支持 `.docx`，老 `.doc` 请先转换；
+- 不默认生成或更新目录；
+- 不保证适配所有学校模板；
+- Word/WPS/LibreOffice 显示可能有差异；
+- 复杂公式、浮动对象、域代码、奇怪分节可能需要人工检查；
+- 自动验收不能替代人工肉眼验收。
 
-Use this tool at your own risk. It modifies Word document structure programmatically and may not satisfy every school, advisor, or department-specific formatting requirement. Always keep backups and manually inspect the final document before submission.
+换句话说：它能帮你省很多排版时间，但不能保证你从此告别 Word 的阴间体验。
 
-The maintainers are not responsible for missed deadlines, formatting rejection, data loss, or incorrect submission caused by using this tool.
+---
 
-## Repository layout
+## 免责声明
+
+使用本工具前请备份原文件。
+
+本工具会程序化修改 Word 文档结构，虽然有自动检查，但不保证满足所有学校、学院、导师或答辩组的格式要求。
+
+如果因为使用本工具导致格式不符合要求、文件损坏、提交失败、导师皱眉、答辩前夜破防，本项目不承担责任。
+
+但我们真诚希望它能少让你熬几个夜。☕
+
+---
+
+## 项目结构
 
 ```text
-paper-thesis-formatter/
-  scripts/      formatter and verifier scripts
-  references/   non-private reference notes, if any
-  templates/    placeholder for publishable templates only
-  README.md
-  SKILL.md
+CQYT-/
+  scripts/      格式化和验收脚本
+  README.md     使用说明
+  SKILL.md      AgentSkill 描述
+  .gitignore    隐私/产物排除规则
 ```
 
-## Development notes
+---
 
-- Treat source thesis content as private.
-- Keep fixes in scripts, not in one-off output files.
-- Run `verify_all_sections_v1.py` after every formatter change.
-- Prefer XML-only transformations unless an opt-in Word automation step is explicitly required.
-- Avoid writing non-ASCII source literals through a misconfigured Windows shell; use UTF-8 files or Unicode-safe constants where needed.
+## 开发建议
+
+- 所有修复尽量写进脚本，不要只手工修某一篇论文；
+- 每次改完跑 `verify_all_sections_v1.py`；
+- 默认别碰目录；
+- 不要提交真实论文；
+- Windows 控制台写中文源码时要小心编码坑；
+- 看到 Word 做出奇怪行为时，先深呼吸，再怪 Word。
+
+---
+
+## 一句话总结
+
+**这是一个论文格式自动整理工具，目标是让 Word 少作妖，让你少破防。**
