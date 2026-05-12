@@ -102,7 +102,7 @@ def is_toc_heading_like_text(t):
     return bool(re.match(r'^(\d+(?:\.\d+)*\s+.+|致谢|参考文献)\s*\d+$', t)) or ('\t' in t)
 
 def format_h1(p):
-    ppr=ensure(p,'pPr',True); ps=ensure(ppr,'pStyle',True); ps.set(q('val'),'3')
+    ppr=ensure(p,'pPr',True); ps=ensure(ppr,'pStyle',True); ps.set(q('val'),'2')
     set_ppr(p,'center','0','440')
     # Paragraph before/after is still inserted. SpaceBefore/After is an extra WPS-safe fallback.
     sp=ensure(ppr,'spacing'); sp.set(q('before'),'440'); sp.set(q('after'),'440'); sp.set(q('line'),'440'); sp.set(q('lineRule'),'exact')
@@ -115,10 +115,10 @@ def format_h2_h3(p):
     lvl = heading_level(p)
     ppr=ensure(p,'pPr',True); ps=ensure(ppr,'pStyle',True)
     if lvl == 2:
-        ps.set(q('val'),'4')
+        ps.set(q('val'),'3')
         set_ppr(p,'left','0','440'); set_all_runs(p,'黑体','Times New Roman',30,False,'000000'); remove_pagebreak_before(p); remove_all_br(p)
     elif lvl == 3:
-        ps.set(q('val'),'5')
+        ps.set(q('val'),'4')
         set_ppr(p,'left','0','440'); set_all_runs(p,'黑体','Times New Roman',28,False,'000000'); remove_pagebreak_before(p); remove_all_br(p)
 
 def patch_heading_run_colors(tmp):
@@ -151,7 +151,7 @@ def patch_styles(tmp):
     styles=tmp/'word'/'styles.xml'
     if not styles.exists(): return 0
     tree=ET.parse(str(styles)); root=tree.getroot(); changed=0
-    specs={'3':('32','center'),'4':('30','left'),'5':('28','left'),'6':('24','left'),'Heading1':('32','center'),'Heading2':('30','left'),'Heading3':('28','left'),'Heading4':('24','left')}
+    specs={'2':('32','center'),'3':('30','left'),'4':('28','left'),'5':('24','left'),'Heading1':('32','center'),'Heading2':('30','left'),'Heading3':('28','left'),'Heading4':('24','left')}
     for sid,(size,align) in specs.items():
         st=root.find(f".//w:style[@w:styleId='{sid}']",NS)
         if st is None: continue

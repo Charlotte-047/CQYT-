@@ -268,6 +268,29 @@ def set_runs(p,east,asc,size,bold=False):
         sz=ET.SubElement(rpr,q('sz')); sz.set(q('val'),str(size)); szcs=ET.SubElement(rpr,q('szCs')); szcs.set(q('val'),str(size))
         color=ET.SubElement(rpr,q('color')); color.set(q('val'),'000000')
 
+def strip_heading_list_formatting(p):
+    """Headings already contain visible numbers as text. Remove Word list
+    numbering/tab settings so Word/WPS cannot visually push H1 to the right.
+    """
+    ppr=ensure(p,'pPr',True)
+    for tag in ('numPr','tabs'):
+        n=ppr.find(q(tag))
+        if n is not None:
+            ppr.remove(n)
+
+def strip_heading_style_list_formatting(styles_root):
+    changed=0
+    # In this template: 2=Heading 1, 3=Heading 2, 4=Heading 3. Also cover names.
+    for sid in ('2','3','4','Heading1','Heading2','Heading3'):
+        st=styles_root.find(f".//w:style[@w:styleId='{sid}']",NS)
+        if st is None: continue
+        ppr=ensure(st,'pPr')
+        for tag in ('numPr','tabs'):
+            n=ppr.find(q(tag))
+            if n is not None:
+                ppr.remove(n); changed+=1
+    return changed
+
 def fix_safe_headings(root):
     changed=0; restored=0; in_toc=False
     body=root.find(q('body'))
@@ -287,10 +310,13 @@ def fix_safe_headings(root):
                 continue
         lvl=safe_heading_level(t); st=style(p)
         if lvl:
-            ppr=ensure(p,'pPr',True); ps=ensure(ppr,'pStyle'); ps.set(q('val'),str(2+lvl))
+            ppr=ensure(p,'pPr',True); ps=ensure(ppr,'pStyle'); ps.set(q('val'),str(1+lvl))
+            # Hard final guard: H1 must be centered; H2/H3 left aligned.
+            # Never allow statement-page right alignment to leak into headings.
             if lvl==1: set_ppr_basic(p,'center','0'); set_runs(p,FONT_HEI,'Times New Roman',32,False)
             elif lvl==2: set_ppr_basic(p,'left','0'); set_runs(p,FONT_HEI,'Times New Roman',30,False)
             else: set_ppr_basic(p,'left','0'); set_runs(p,FONT_HEI,'Times New Roman',28,False)
+            strip_heading_list_formatting(p)
             changed+=1
         elif st in ('3','4','5','Heading1','Heading2','Heading3') and t:
             ppr=ensure(p,'pPr',True); ps=ppr.find(q('pStyle'))
@@ -337,6 +363,11 @@ def process(src):
         tables=fix_tables(root)
         tree.write(str(docxml),xml_declaration=True,encoding='utf-8',standalone='yes')
         stylesxml=tmp/'word'/'styles.xml'
+        heading_style_list_changed=0
+        if stylesxml.exists():
+            stree=ET.parse(str(stylesxml)); sroot=stree.getroot()
+            heading_style_list_changed = strip_heading_style_list_formatting(sroot)
+            stree.write(str(stylesxml),xml_declaration=True,encoding='utf-8',standalone='yes')
         # TOC styles are also protected by default; keep source/template directory intact.
         toc_changed=0
         repack=src.with_suffix('.tmp.docx')
@@ -352,9 +383,11 @@ def process(src):
         print('FINAL_XML_HEADINGS_FIXED',heading_changed)
         print('FINAL_XML_HEADINGS_RESTORED_BODY',heading_restored)
         print('FINAL_XML_TABLES_FIXED',tables)
+        print('FINAL_XML_HEADING_STYLE_LIST_CLEARED',heading_style_list_changed)
         print('FINAL_XML_TOC_PROTECTED_STYLE_CHANGES',toc_changed)
     finally:
         shutil.rmtree(tmp,ignore_errors=True)
 
 if __name__=='__main__':
     process(sys.argv[1])
+

@@ -57,7 +57,7 @@ def verify(path):
         lvl=lvl_by_text(t); st=style(p); fr=first_run(p)
         if lvl:
             counts[lvl]+=1
-            exp_style=str(2+lvl); exp_size={1:'32',2:'30',3:'28'}[lvl]; exp_align={1:'center',2:'left',3:'left'}[lvl]
+            exp_style=str(1+lvl); exp_size={1:'32',2:'30',3:'28'}[lvl]; exp_align={1:'center',2:'left',3:'left'}[lvl]
             if st!=exp_style: fails.append(f'L{lvl} style wrong idx={idx} text={t} style={st} expected={exp_style}')
             if fr.get('east')!='黑体' or fr.get('ascii')!='Times New Roman' or fr.get('hAnsi')!='Times New Roman' or fr.get('size')!=exp_size or fr.get('bold'):
                 fails.append(f'L{lvl} font wrong idx={idx} text={t} props={fr} expected 黑体/TNR size={exp_size} non-bold')

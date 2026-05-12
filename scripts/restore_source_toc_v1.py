@@ -33,18 +33,40 @@ def is_toc_like(p):
     return 'TOC' in instr or 'PAGEREF' in instr or 'HYPERLINK' in instr
 
 def extract_toc(nodes):
+    """Extract only the real TOC block.
+
+    Older logic stopped only at numbered H1 (e.g. "1 绪论"). If the source
+    document had an unnumbered body after the TOC title, the whole paper was
+    mistaken for TOC and copied back into the final output, producing two papers.
+    This version is intentionally conservative: after the TOC title, keep only
+    actual TOC field/style rows, visible page-number rows, and leading blanks.
+    Stop at the first normal body paragraph/heading.
+    """
     for i,n in enumerate(nodes):
         if n.tag==q('p') and is_toc_title(text(n)):
             j=i+1
+            seen_toc_row=False
+            blank_budget=3
             while j<len(nodes):
                 m=nodes[j]
-                if m.tag==q('p'):
-                    mt=text(m)
-                    if hlevel(mt)==1 and not is_toc_like(m):
-                        break
-                    # include TOC rows and separating blanks; stop only at real body H1
-                    j+=1; continue
-                j+=1
+                if m.tag!=q('p'):
+                    break
+                mt=text(m)
+                if is_toc_like(m):
+                    seen_toc_row=True; blank_budget=2; j+=1; continue
+                if not mt:
+                    # Allow a few blanks around/inside a real TOC, but do not let
+                    # blanks bridge from TOC title into the whole body.
+                    if blank_budget>0:
+                        blank_budget-=1; j+=1; continue
+                    break
+                # Some static TOC rows are plain text ending with page number.
+                if re.match(r'^(\d+(?:\.\d+)*\s+.+|'+chr(0x81f4)+chr(0x8c22)+'|'+chr(0x53c2)+chr(0x8003)+chr(0x6587)+chr(0x732e)+r')\s*\d+$', mt):
+                    seen_toc_row=True; blank_budget=2; j+=1; continue
+                # Plain heading/body text after TOC title is not TOC.
+                break
+            # If source has no real TOC rows, preserve only the TOC title/blanks;
+            # never copy the body as a fake TOC.
             return i,j,[copy.deepcopy(x) for x in nodes[i:j]]
     return None
 

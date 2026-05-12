@@ -11,7 +11,7 @@ echo.
 
 REM 定位本工具目录：bat 放在哪里，就从哪里找 scripts
 set "TOOL_DIR=%~dp0"
-set "SCRIPT=%TOOL_DIR%scripts\format_paper_xml_only.py"
+set "SCRIPT=%TOOL_DIR%scripts\format_paper_with_targeted_repair_loop.py"
 
 if not exist "%SCRIPT%" (
   echo [错误] 找不到格式化脚本：
@@ -89,7 +89,8 @@ if not %errorlevel%==0 (
 
 echo.
 echo 开始格式化，请稍等...
-%PY% "%SCRIPT%" "%INPUT%" "%OUT%"
+echo 将执行：格式化 + 定向修复循环 + 最终目录/三线表强制收尾
+%PY% "%SCRIPT%" "%INPUT%" "%OUT%" --max-loops 8
 
 if not %errorlevel%==0 (
   echo.

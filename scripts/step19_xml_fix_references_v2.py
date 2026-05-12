@@ -64,7 +64,7 @@ def replace_mixed_font_text(p, s):
 
 def set_ref_title(p):
     ppr=ensure(p,'pPr',True)
-    ps=ensure(ppr,'pStyle',True); ps.set(q('val'),'3')
+    ps=ensure(ppr,'pStyle',True); ps.set(q('val'),'2')
     jc=ensure(ppr,'jc'); jc.set(q('val'),'center')
     sp=ensure(ppr,'spacing'); sp.set(q('before'),'0'); sp.set(q('after'),'0'); sp.set(q('line'),'440'); sp.set(q('lineRule'),'exact')
     ind=ensure(ppr,'ind')
@@ -89,30 +89,17 @@ def set_ref_ppr(p):
         if old is not None: ppr.remove(old)
 
 def normalize_punct(s):
-    table=str.maketrans({
-        '（':'(', '）':')', '，':',', '。':'.', '：':':', '；':';', '！':'!', '？':'?',
-        '【':'[', '】':']', '［':'[', '］':']', '、':',', '．':'.', '“':'"', '”':'"', '‘':'\'', '’':'\'',
-    })
-    s=s.translate(table)
+    """Preserve reference text content.
+
+    Earlier versions converted Chinese punctuation/quotes to English punctuation,
+    which changed bibliography text and triggered diff failures. Formatting scripts
+    must not rewrite user content; only normalize reference numbering whitespace.
+    """
     s=s.replace('\t',' ')
     s=re.sub(r'\s+',' ',s).strip()
-    # normalize reference number, remove leading zero
     m=re.match(r'^\[?0*(\d+)\]?\s*[\.、．]?\s*(.*)$',s)
     if m:
         s=f'[{int(m.group(1))}] {m.group(2).strip()}'
-    # English punctuation spacing. Do not add spaces inside [1] or between 2024(10).
-    s=re.sub(r',\s*', ', ', s)
-    s=re.sub(r';\s*', '; ', s)
-    s=re.sub(r':\s*', ': ', s)
-    # Ensure period followed by one space when not end and not decimal-ish.
-    s=re.sub(r'\.(?=\S)', '. ', s)
-    # Repair common bibliography tokens damaged by period spacing.
-    s=s.replace('[J]. ', '[J]. ')
-    s=re.sub(r'\s+', ' ', s).strip()
-    # Every reference ends with a period.
-    s=s.rstrip(' .') + '.'
-    # Keep [n] followed by exactly one space.
-    s=re.sub(r'^(\[\d+\])\s*', r'\1 ', s)
     return s
 
 def is_ref_line(t):
@@ -129,7 +116,7 @@ def process(src,out):
             if t=='参考文献':
                 in_refs=True; title_fixed+=1; set_ref_title(p); continue
             if not in_refs: continue
-            if t and style(p)=='3':
+            if t and style(p) in ('2','3','Heading1','Heading2') and t!='参考文献':
                 in_refs=False; continue
             if not t:
                 idx=list(body).index(p); prev=list(body)[idx-1] if idx>0 else None; nxt=list(body)[idx+1] if idx+1<len(list(body)) else None

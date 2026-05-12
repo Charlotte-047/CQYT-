@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import argparse, shutil, subprocess, sys, time
 
 ROOT = Path(__file__).resolve().parent
@@ -18,6 +18,7 @@ def main():
 
     src = Path(ns.input).resolve()
     out = Path(ns.output).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('xmlonly-%Y%m%d-%H%M%S')
     work = ROOT.parent / 'pipeline' / f'{stamp}-{src.stem}'
     work.mkdir(parents=True, exist_ok=True)
@@ -47,6 +48,7 @@ def main():
     # order-sensitive; the output must be the artifact that gets cleaned/audited.
     run('final_xml_cleanup_v1.py', out, check=False)
     run('restore_source_toc_v1.py', src, out, check=False)
+    run('final_strict_toc_tables_v1.py', out, check=False)
     run('verify_skill_output_v1.py', out, check=False)
     run('verify_headings_strict_v1.py', out, check=False)
     run('verify_headings_against_source_v1.py', src, out, check=False)
@@ -56,3 +58,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+

@@ -63,14 +63,19 @@ def make_blank():
     return p
 
 def make_caption(txt):
-    p=ET.Element(q('p')); clear_pstyle(p); set_ppr(p,'center','0','440',True,False,True)
+    p=ET.Element(q('p')); clear_pstyle(p); set_ppr(p,'center','0','440',True,True,True)
     r=ET.SubElement(p,q('r')); set_run(r,'宋体','Times New Roman',21,False,'000000')
     ET.SubElement(r,q('t')).text=txt
     return p
 
 def is_blank(n): return n is not None and n.tag==q('p') and text(n)==''
 def has_drawing(p): return bool(p.findall('.//w:drawing',NS))
-def is_h1(p): return p.tag==q('p') and style(p)=='3'
+def is_h1(p):
+    if p.tag!=q('p'): return False
+    t=text(p)
+    # Current template: style 2 is real Heading 1. Also accept text-detected H1
+    # so media/table repair still works if style mapping is imperfect.
+    return style(p) in ('2','Heading1') or bool(re.match(r'^\d+\s+\S+',t)) or t in ('致谢','参考文献')
 def h1_chapter(p):
     m=re.match(r'^(\d+)\s+',text(p)); return int(m.group(1)) if m else None
 
@@ -91,7 +96,7 @@ def drawing_runs_deep(p):
     return [r for r in p.findall('./w:r',NS) if r.findall('.//w:drawing',NS)]
 
 def make_picture_para_from_runs(runs):
-    p=ET.Element(q('p')); clear_pstyle(p); set_ppr(p,'center','0','240',False,False,True)
+    p=ET.Element(q('p')); clear_pstyle(p); set_ppr(p,'center','0','240',False,True,True)
     for r in runs:
         nr=ET.fromstring(ET.tostring(r))
         # remove all text/tab/br from image run, keep drawing only
@@ -168,7 +173,7 @@ def find_existing_figure_caption_around(body, pic_idx, scan_limit=8):
     return None
 
 def format_existing_caption(p):
-    set_ppr(p,'center','0','440',True,False,True)
+    set_ppr(p,'center','0','440',True,True,True)
     clear_pstyle(p)
     for r in p.findall('./w:r',NS): set_run(r,'宋体','Times New Roman',21,False,'000000')
 
@@ -177,6 +182,35 @@ def remove_node_if_present(body, node):
         body.remove(node); return True
     except ValueError:
         return False
+
+def purge_extra_figure_captions_near(body, pic_node, keep_node=None, scan_limit=8):
+    """Keep exactly one figure caption directly below the picture.
+    Remove duplicate nearby real captions/placeholders, stopping at body text,
+    another media/table block, or a heading.
+    """
+    removed=0; children=list(body)
+    if pic_node not in children: return 0
+    pic_idx=children.index(pic_node)
+    for direction in (-1,1):
+        seen=0; j=pic_idx+direction
+        while 0 <= j < len(children) and seen < scan_limit:
+            n=children[j]
+            if n.tag==q('tbl') or (n.tag==q('p') and (is_h1(n) or has_drawing(n))):
+                break
+            if n.tag==q('p'):
+                tt=text(n)
+                if n is keep_node:
+                    seen+=1; j+=direction; continue
+                if is_figure_caption_text(tt) or is_generated_figure_placeholder(tt):
+                    body.remove(n); removed+=1
+                    children=list(body)
+                    if pic_node not in children: return removed
+                    pic_idx=children.index(pic_node); j=pic_idx+direction; seen=0
+                    continue
+                if tt:
+                    break
+            seen+=1; j+=direction
+    return removed
 
 def format_pictures_and_captions(body):
     children=list(body); chapter=None; seq={}; pics=0; caps=0; blanks=0; i=0
@@ -187,7 +221,7 @@ def format_pictures_and_captions(body):
             if ch is not None: chapter=ch
         if chapter is not None and node.tag==q('p') and has_drawing(node):
             pics+=1; seq[chapter]=seq.get(chapter,0)+1
-            set_ppr(node,'center','0','240',False,False,True); clear_pstyle(node)
+            set_ppr(node,'center','0','240',False,True,True); clear_pstyle(node)
             for r in node.findall('./w:r',NS): set_run(r,'宋体','Times New Roman',24,False,'000000')
             idx=list(body).index(node)
             # Keep one blank before image if not already present.
@@ -207,6 +241,8 @@ def format_pictures_and_captions(body):
                 cap_txt=f'{FIG_CHAR}{chapter}.{seq[chapter]} {FIG_PLACEHOLDER_SUFFIX}'
                 body.insert(idx+1,make_caption(cap_txt)); caps+=1
                 cap_idx=idx+1
+            purge_extra_figure_captions_near(body, node, list(body)[cap_idx])
+            cap_idx=list(body).index(list(body)[list(body).index(node)+1])
             # Keep one blank after the caption, not between image and caption.
             children=list(body); after=children[cap_idx+1] if cap_idx+1<len(children) else None
             if not is_blank(after):
@@ -243,9 +279,7 @@ def format_table(tbl):
     tb=tblPr.find(q('tblBorders'))
     if tb is None: tb=ET.SubElement(tblPr,q('tblBorders'))
     clear_borders(tb)
-    set_border(tb,'top','single','12')
-    set_border(tb,'bottom','single','12')
-    for e in ('left','right','insideH','insideV'): nil_border(tb,e)
+    for e in ('top','left','bottom','right','insideH','insideV'): nil_border(tb,e)
     rows=tbl.findall('./w:tr',NS)
     for ri,row in enumerate(rows):
         trPr=ensure(row,'trPr',True)
@@ -255,23 +289,22 @@ def format_table(tbl):
             if cb is None: cb=ET.SubElement(tcPr,q('tcBorders'))
             clear_borders(cb)
             for e in ('left','right','insideH','insideV'): nil_border(cb,e)
+            # Standard t0: all visible lines are cell borders.
+            nil_border(cb,'top')
+            nil_border(cb,'bottom')
             if ri==0:
                 set_border(cb,'top','single','12')
+                set_border(cb,'bottom','single','6')
+            if ri==len(rows)-1:
                 set_border(cb,'bottom','single','12')
-            else:
-                nil_border(cb,'top')
-                if ri==len(rows)-1:
-                    set_border(cb,'bottom','single','12')
-                else:
-                    nil_border(cb,'bottom')
             for p in cell.findall('.//w:p',NS):
                 clear_pstyle(p)
                 ppr=ensure(p,'pPr',True)
-                # Keep table text natural; do not force all cells to centered layout.
+                # Verifier/school requirement: table cell text centered.
                 jc=ppr.find(q('jc'))
                 if jc is None:
                     jc=ET.SubElement(ppr,q('jc'))
-                    jc.set(q('val'),'left')
+                jc.set(q('val'),'center')
                 ind=ensure(ppr,'ind')
                 for a in ('firstLine','left','hanging','right','firstLineChars','leftChars','hangingChars','rightChars'):
                     ind.attrib.pop(q(a),None)
@@ -332,12 +365,22 @@ def normalize_table_caption(p):
 
 
 def keep_table_with_next_paragraphs(tbl):
-    # Make table rows less likely to split across pages, but don't override cell text layout.
-    for row in tbl.findall('./w:tr',NS):
+    # Hard guard against table pagination: Word has no single "keep whole table"
+    # flag, so combine row cantSplit with paragraph keepLines/keepNext.
+    rows=tbl.findall('./w:tr',NS)
+    for ri,row in enumerate(rows):
         trPr=ensure(row,'trPr',True)
         if trPr.find(q('cantSplit')) is None:
             ET.SubElement(trPr,q('cantSplit'))
-
+        for p in row.findall('.//w:p',NS):
+            ppr=ensure(p,'pPr',True)
+            if ppr.find(q('keepLines')) is None:
+                ET.SubElement(ppr,q('keepLines'))
+            kn=ppr.find(q('keepNext'))
+            if ri < len(rows)-1 and kn is None:
+                ET.SubElement(ppr,q('keepNext'))
+            elif ri == len(rows)-1 and kn is not None:
+                ppr.remove(kn)
 def format_tables(body):
     children=list(body); chapter=None; seq={}; tbls=0; caps=0; notes=0; blanks=0; i=0
     while i < len(children):
@@ -405,3 +448,6 @@ def process(src,out):
 if __name__=='__main__':
     if len(sys.argv)!=3: raise SystemExit('usage: python step18_xml_fix_media_tables_v3.py in.docx out.docx')
     process(sys.argv[1],sys.argv[2])
+
+
+

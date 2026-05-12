@@ -56,6 +56,16 @@ def safe_h_level(t):
     return None
 
 def fail(fails,msg): fails.append(msg)
+def border_is_none(b): return (not b) or b.get('val') in (None,'nil','none') or b.get('sz')=='0'
+def battrs(n): return {} if n is None else {k.split('}')[-1]:v for k,v in n.attrib.items()}
+def cell_border_map(tc):
+    tcPr=tc.find(q('tcPr')); b=None if tcPr is None else tcPr.find(q('tcBorders'))
+    out={}
+    if b is None: return out
+    for name in ('top','left','bottom','right','insideH','insideV','tl2br','tr2bl'):
+        n=b.find(q(name))
+        if n is not None: out[name]=battrs(n)
+    return out
 
 def verify(path):
     path=Path(path)
@@ -100,7 +110,7 @@ def verify(path):
         if lvl:
             heading_count += 1
             exp_size={1:'32',2:'30',3:'28'}[lvl]
-            if st not in (str(2+lvl), f'Heading{lvl}'):
+            if st not in (str(1+lvl), f'Heading{lvl}'):
                 fail(fails,f'safe heading wrong style: {t[:50]} style={st}')
             if rp.get('east')!='\u9ed1\u4f53' or rp.get('size')!=exp_size:
                 fail(fails,f'safe heading wrong font: {t[:50]} props={rp}')
@@ -111,22 +121,30 @@ def verify(path):
     metrics['safe_headings_checked']=heading_count
     metrics['body_heading_pollution_hits']=restored_risk
 
-    # 3. Tables: minimal three-line table + centered table body + 五号 + single spacing.
+    # 3. Tables: t0 three-line table + centered table body + 五号 + single spacing.
     table_count=0
     for tbl in root.findall('.//w:tbl',NS):
         table_count += 1
-        tb=tbl.find('./w:tblPr/w:tblBorders',NS)
-        if tb is None: fail(fails,f'table {table_count} missing tblBorders'); continue
-        def bv(edge):
-            e=tb.find(q(edge)); return None if e is None else e.get(q('val'))
-        if bv('top')!='single' or bv('bottom')!='single': fail(fails,f'table {table_count} missing top/bottom lines')
-        for edge in ('left','right','insideH','insideV'):
-            if bv(edge) not in ('nil','none'): fail(fails,f'table {table_count} has non-open border {edge}={bv(edge)}')
         rows=tbl.findall('./w:tr',NS)
+        if not rows:
+            fail(fails,f'table {table_count} has no rows')
+            continue
         for ri,row in enumerate(rows):
             trPr=row.find(q('trPr'))
             if trPr is None or trPr.find(q('cantSplit')) is None: fail(fails,f'table {table_count} row {ri+1} missing cantSplit')
-            for cell in row.findall('./w:tc',NS):
+            for ci,cell in enumerate(row.findall('./w:tc',NS),1):
+                cb=cell_border_map(cell)
+                for edge in ('left','right','insideH','insideV','tl2br','tr2bl'):
+                    if not border_is_none(cb.get(edge,{})): fail(fails,f'table {table_count} cell {ri+1},{ci} unexpected {edge} border')
+                top=cb.get('top',{}); bottom=cb.get('bottom',{})
+                if ri==0:
+                    if top.get('val')!='single' or top.get('sz')!='12': fail(fails,f'table {table_count} header top not 1.5pt')
+                    if bottom.get('val')!='single' or bottom.get('sz')!='6': fail(fails,f'table {table_count} header bottom not 0.75pt')
+                elif ri==len(rows)-1:
+                    if not border_is_none(top): fail(fails,f'table {table_count} last row unexpected top border')
+                    if bottom.get('val')!='single' or bottom.get('sz')!='12': fail(fails,f'table {table_count} last row bottom not 1.5pt')
+                else:
+                    if not border_is_none(top) or not border_is_none(bottom): fail(fails,f'table {table_count} body row has extra horizontal border')
                 for p in cell.findall('.//w:p',NS):
                     if jc(p)!='center': fail(fails,f'table {table_count} cell paragraph not centered: {text(p)[:30]} jc={jc(p)}')
                     sp=spacing(p)

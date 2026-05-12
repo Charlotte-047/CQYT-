@@ -78,7 +78,7 @@ def verify(src,outdoc):
             fails.append(f'missing expected heading L{l}: {t}')
             continue
         gl,st,props=got[t]
-        exp_style=str(2+l); exp_size={1:'32',2:'30',3:'28'}[l]
+        exp_style=str(1+l); exp_size={1:'32',2:'30',3:'28'}[l]
         if gl!=l: fails.append(f'level mismatch for {t}: expected L{l}, got L{gl}')
         if st!=exp_style: fails.append(f'style mismatch for {t}: expected {exp_style}, got {st}')
         if props.get('east')!='黑体' or props.get('size')!=exp_size:

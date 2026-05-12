@@ -62,6 +62,16 @@ def fail(fails,mod,msg): fails.append({'module':mod,'msg':msg})
 def warn(warns,mod,msg): warns.append({'module':mod,'msg':msg})
 def ok_body_font(fr): return fr and fr.get('east')=='\u5b8b\u4f53' and fr.get('ascii')=='Times New Roman' and fr.get('size')=='24'
 def ok_table_font(rp): return rp and rp.get('east')=='\u5b8b\u4f53' and rp.get('size')=='21'
+def border_is_none(b): return (not b) or b.get('val') in (None,'nil','none') or b.get('sz')=='0'
+def battrs(n): return {} if n is None else {k.split('}')[-1]:v for k,v in n.attrib.items()}
+def cell_border_map(tc):
+    tcPr=tc.find(q('tcPr')); b=None if tcPr is None else tcPr.find(q('tcBorders'))
+    out={}
+    if b is None: return out
+    for name in ('top','left','bottom','right','insideH','insideV','tl2br','tr2bl'):
+        n=b.find(q(name))
+        if n is not None: out[name]=battrs(n)
+    return out
 
 def load(path):
     with ZipFile(path) as z:
@@ -137,7 +147,7 @@ def audit(path):
             else: continue
         lvl=h_level(t); st=style(p); fr=first_run(p)
         if lvl:
-            exp_style=str(2+lvl); exp_size={1:'32',2:'30',3:'28'}[lvl]; exp_jc={1:'center',2:'left',3:'left'}[lvl]
+            exp_style=str(1+lvl); exp_size={1:'32',2:'30',3:'28'}[lvl]; exp_jc={1:'center',2:'left',3:'left'}[lvl]
             if st!=exp_style: fail(fails,'headings',f'L{lvl} style wrong idx={idx}: {t} style={st}')
             if fr.get('east')!='\u9ed1\u4f53' or fr.get('size')!=exp_size or fr.get('bold'): fail(fails,'headings',f'L{lvl} font wrong idx={idx}: {t} props={fr}')
             if jc(p)!=exp_jc: fail(fails,'headings',f'L{lvl} align wrong idx={idx}: {t} jc={jc(p)}')
@@ -168,17 +178,27 @@ def audit(path):
     table_count=0
     for tbl in root.findall('.//w:tbl',NS):
         table_count+=1
-        tb=tbl.find('./w:tblPr/w:tblBorders',NS)
-        if tb is None: fail(fails,'tables',f'table {table_count} missing borders'); continue
-        def bv(edge):
-            e=tb.find(q(edge)); return None if e is None else e.get(q('val'))
-        if bv('top')!='single' or bv('bottom')!='single': fail(fails,'tables',f'table {table_count} missing top/bottom')
-        for edge in ('left','right','insideH','insideV'):
-            if bv(edge) not in ('nil','none'): fail(fails,'tables',f'table {table_count} non-open border {edge}={bv(edge)}')
-        for ri,row in enumerate(tbl.findall('./w:tr',NS),1):
+        rows=tbl.findall('./w:tr',NS)
+        if not rows:
+            fail(fails,'tables',f'table {table_count} has no rows')
+            continue
+        # t0 standard: visible three lines are cell borders, not tblBorders.
+        for ri,row in enumerate(rows):
             trPr=row.find(q('trPr'))
-            if trPr is None or trPr.find(q('cantSplit')) is None: warn(warns,'tables',f'table {table_count} row {ri} missing cantSplit')
-            for cell in row.findall('./w:tc',NS):
+            if trPr is None or trPr.find(q('cantSplit')) is None: warn(warns,'tables',f'table {table_count} row {ri+1} missing cantSplit')
+            for ci,cell in enumerate(row.findall('./w:tc',NS),1):
+                cb=cell_border_map(cell)
+                for edge in ('left','right','insideH','insideV','tl2br','tr2bl'):
+                    if not border_is_none(cb.get(edge,{})): fail(fails,'tables',f'table {table_count} cell {ri+1},{ci} unexpected {edge} border')
+                top=cb.get('top',{}); bottom=cb.get('bottom',{})
+                if ri==0:
+                    if top.get('val')!='single' or top.get('sz')!='12': fail(fails,'tables',f'table {table_count} header top not 1.5pt')
+                    if bottom.get('val')!='single' or bottom.get('sz')!='6': fail(fails,'tables',f'table {table_count} header bottom not 0.75pt')
+                elif ri==len(rows)-1:
+                    if not border_is_none(top): fail(fails,'tables',f'table {table_count} last row unexpected top border')
+                    if bottom.get('val')!='single' or bottom.get('sz')!='12': fail(fails,'tables',f'table {table_count} last row bottom not 1.5pt')
+                else:
+                    if not border_is_none(top) or not border_is_none(bottom): fail(fails,'tables',f'table {table_count} body row has extra horizontal border')
                 for p in cell.findall('.//w:p',NS):
                     if text(p) and jc(p)!='center': fail(fails,'tables',f'table {table_count} cell not centered: {text(p)[:40]}')
                     sp=spacing(p)

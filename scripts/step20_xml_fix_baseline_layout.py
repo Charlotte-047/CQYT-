@@ -80,6 +80,12 @@ def set_ppr(p,align='both',first_chars=200,line=LINE_22,before=0,after=0):
         ind.attrib.pop(q('firstLine'),None)
     set_para_mark_font(p,'宋体','Times New Roman',24,False,'000000')
 
+def set_statement_signature_right(p):
+    """Originality statement signature/date/name block: strict right align,
+    no first-line indent. This intentionally touches only signature/date lines.
+    """
+    set_ppr(p,'right',None,LINE_22,0,0)
+    set_all_runs(p,'宋体','Times New Roman',24,False,'000000')
 def format_blank(p):
     ppr=ensure(p,'pPr',True)
     ps=ppr.find(q('pStyle'))
@@ -122,6 +128,40 @@ def fix_english_abstract_title_and_blanks(root):
     return fixed
 
 
+def set_plain_text(p, new_text):
+    rs=p.findall('./w:r',NS)
+    if not rs:
+        r=ET.SubElement(p,q('r')); ET.SubElement(r,q('t')).text=''; rs=[r]
+    first=True
+    for r in list(rs):
+        for child in list(r):
+            if child.tag != q('rPr'):
+                r.remove(child)
+        if first:
+            t=ET.SubElement(r,q('t')); t.text=new_text
+            if new_text.startswith(' ') or new_text.endswith(' '):
+                t.set('{http://www.w3.org/XML/1998/namespace}space','preserve')
+            first=False
+        else:
+            p.remove(r)
+
+def normalize_english_keywords_text(t):
+    if not re.match(r'^(Key words|Keywords|Key word)\b', t or ''):
+        return t
+    # Normalize semicolon spacing and drop terminal punctuation.
+    t=re.sub(r';\s*', '; ', t)
+    t=re.sub(r'\s+', ' ', t).strip()
+    t=re.sub(r'[。；;,.，]+$', '', t)
+    return t
+
+def format_front_title(p, kind):
+    if kind=='toc':
+        set_ppr(p,'center',None,LINE_22,0,0); set_all_runs(p,'黑体','Times New Roman',32,False,'000000')
+    elif kind=='cn_abs':
+        set_ppr(p,'center',None,LINE_22,0,0); set_all_runs(p,'黑体','Times New Roman',32,True,'000000')
+    elif kind=='en_abs':
+        set_ppr(p,'center',None,LINE_22,0,0); set_all_runs(p,'Times New Roman','Times New Roman',32,True,'000000')
+
 def set_all_section_page_setup(root):
     changed=0
     for sect in root.findall('.//w:sectPr',NS):
@@ -139,6 +179,7 @@ def is_toc_line(t): return '\t' in raw_text_cur or bool(re.match(r'^(\d+(?:\.\d+
 def is_caption_or_note(t): return bool(re.match(r'^[图表]\d+\.\d+\s+',t)) or t.startswith('注：')
 def is_reference(t): return bool(re.match(r'^\[\d+\]\s+',t))
 def has_drawing(p): return bool(p.findall('.//w:drawing',NS))
+def is_inside_table(p): return p.getparent() is not None and p.getparent().tag != q('body')
 def looks_like_body_sentence(t):
     # Headings may contain ：、（）/ etc. Only reject obvious long sentences.
     return len(t) > 70 or bool(re.search(r'[。；;]$', t))
@@ -166,34 +207,45 @@ def fix_paragraphs(root):
             continue
         if t in ('摘    要','摘  要'):
             state='abstract_cn'
+            if t!='摘    要': set_plain_text(p,'摘    要')
+            format_front_title(p,'cn_abs')
             continue
         if t=='ABSTRACT':
             state='abstract_en'
+            format_front_title(p,'en_abs')
             continue
         if t in ('目    录','目  录'):
             state='toc'
+            if t!='目    录': set_plain_text(p,'目    录')
+            format_front_title(p,'toc')
             continue
         if lvl==1 and t not in ('摘    要','摘  要','ABSTRACT','目    录','目  录'):
             state='body'
         if t=='参考文献':
             state='refs'
-        if has_drawing(p):
-            # Never rewrite runs in picture paragraphs; that deletes w:drawing objects.
+        if has_drawing(p) or is_inside_table(p):
+            # Never rewrite runs in picture/table paragraphs; that deletes drawings or overwrites table formatting.
             continue
         if t=='' or raw_text(p).strip()=='' or raw_text(p)==' ':
             format_blank(p); blanks+=1; continue
-        if is_heading(p):
+        if lvl or is_heading(p):
             continue
         if is_caption_or_note(t) or is_reference(t):
             continue
         if state=='statement_title':
-            # 原创性声明标题后的正文：两端对齐，首行缩进两字符。签名/日期行不强改。
-            if '本人签名' in t or re.match(r'^年\s*月\s*日$',t):
-                continue
+            # 原创性声明标题后的正文：签名/姓名/日期行严格右对齐，正文两端对齐。
+            if re.search(r'(本人签名|签名|姓名|日期|年\s*月\s*日)', t):
+                set_statement_signature_right(p); statement+=1; continue
             set_ppr(p,'both',200,LINE_22,0,0); set_all_runs(p,'宋体','Times New Roman',24,False,'000000')
             statement+=1; continue
         if state in ('abstract_cn','abstract_en'):
             if t.startswith(('关键词','Key words','Keywords','Key word')):
+                if state=='abstract_en':
+                    nt=normalize_english_keywords_text(t)
+                    if nt!=t: set_plain_text(p,nt); t=nt
+                    set_ppr(p,'left',None,LINE_22,0,0); set_all_runs(p,'Times New Roman','Times New Roman',24,False,'000000')
+                else:
+                    set_ppr(p,'left',None,LINE_22,0,0); set_all_runs(p,'宋体','Times New Roman',24,False,'000000')
                 continue
             set_ppr(p,'both',200,LINE_22,0,0); set_all_runs(p,'宋体' if state=='abstract_cn' else 'Times New Roman','Times New Roman',24,False,'000000')
             abstract+=1; continue
@@ -218,10 +270,36 @@ def fix_paragraphs(root):
             continue
         if not in_body:
             continue
-        if has_drawing(p) or not t or is_heading(p) or is_caption_or_note(t) or is_reference(t):
+        if has_drawing(p) or is_inside_table(p) or not t or lvl or is_heading(p) or is_caption_or_note(t) or is_reference(t):
             continue
         set_ppr(p,'both',200,LINE_22,0,0); set_all_runs(p,'宋体','Times New Roman',24,False,'000000')
     return blanks,body_indent,statement,abstract
+
+def fix_front_matter_final(root):
+    paras=root.findall('.//w:p',NS)
+    fixed=0; state=None
+    for p in paras:
+        t=text(p)
+        if t in ('摘    要','摘  要'):
+            if t!='摘    要': set_plain_text(p,'摘    要')
+            format_front_title(p,'cn_abs'); state='cn'; fixed+=1; continue
+        if t=='ABSTRACT':
+            format_front_title(p,'en_abs'); state='en'; fixed+=1; continue
+        if t in ('目    录','目  录'):
+            if t!='目    录': set_plain_text(p,'目    录')
+            format_front_title(p,'toc'); state='toc'; fixed+=1; continue
+        if state=='en':
+            if not t or raw_text(p).strip()=='':
+                set_blank_font(p,'Times New Roman','Times New Roman',24); fixed+=1; continue
+            if t.startswith(('Key words','Keywords','Key word')):
+                nt=normalize_english_keywords_text(t)
+                if nt!=t: set_plain_text(p,nt)
+                set_ppr(p,'left',None,LINE_22,0,0); set_all_runs(p,'Times New Roman','Times New Roman',24,False,'000000'); fixed+=1; continue
+            set_ppr(p,'both',200,LINE_22,0,0); set_all_runs(p,'Times New Roman','Times New Roman',24,False,'000000'); fixed+=1
+        elif state=='cn':
+            if t.startswith('关键词'):
+                set_ppr(p,'left',None,LINE_22,0,0); set_all_runs(p,'宋体','Times New Roman',24,False,'000000'); fixed+=1
+    return fixed
 
 def process(src,out):
     src=Path(src); out=Path(out); out.parent.mkdir(parents=True,exist_ok=True)
@@ -232,6 +310,7 @@ def process(src,out):
         sections=set_all_section_page_setup(root)
         blanks,body_indent,statement,abstract=fix_paragraphs(root)
         abstract_blank=fix_english_abstract_title_and_blanks(root)
+        front_final=fix_front_matter_final(root)
         tree.write(str(docxml),xml_declaration=True,encoding='utf-8',standalone='yes')
         repack=out.with_suffix('.tmp.docx')
         with ZipFile(repack,'w',ZIP_DEFLATED) as z:
@@ -245,8 +324,10 @@ def process(src,out):
         print('STATEMENT_JUSTIFY_INDENT_FIXED:',statement)
         print('ABSTRACT_INDENT_FIXED:',abstract)
         print('EN_ABSTRACT_TITLE_BLANKS_FIXED:',abstract_blank)
+        print('FRONT_MATTER_FINAL_FIXED:',front_final)
     finally:
         shutil.rmtree(tmp,ignore_errors=True)
 if __name__=='__main__':
     if len(sys.argv)!=3: raise SystemExit('usage: python step20_xml_fix_baseline_layout.py in.docx out.docx')
     process(sys.argv[1],sys.argv[2])
+

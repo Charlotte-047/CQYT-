@@ -1,6 +1,6 @@
 from zipfile import ZipFile
 from lxml import etree as ET
-import sys
+import sys,re
 W='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 NS={'w':W.strip('{}')}
 def q(t): return f'{W}{t}'
@@ -17,6 +17,16 @@ def h1_like(t):
  tt=t or ''
  if len(tt)>90 or re.search(r'['+chr(0x3002)+chr(0xff1b)+r';]$',tt): return False
  return bool(re.match(r'^\d+\s+\S.{0,60}$',tt)) or norm(tt) in (chr(0x81f4)+chr(0x8c22), chr(0x53c2)+chr(0x8003)+chr(0x6587)+chr(0x732e))
+def blank_expected_font(paras, idx):
+ # English abstract/front-matter blanks use Times New Roman; Chinese/body blanks use 宋体.
+ state='front'
+ for j in range(0, idx+1):
+  tt=text(paras[j])
+  if tt=='ABSTRACT': state='abstract_en'
+  elif norm(tt)==(chr(0x76ee)+chr(0x5f55)): state='toc'
+  elif re.match(r'^1\s+\S+', tt or ''): state='body'
+ return 'Times New Roman' if state=='abstract_en' else '宋体'
+
 def fonts(p):
  out=[]
  ppr=p.find(q('pPr'))
@@ -49,7 +59,7 @@ with ZipFile(p) as z:
   if text(pa).upper()=='ABSTRACT': abstract_idx=i
  for i,pa in enumerate(ps):
   if pa.getparent().tag==q('body') and ((text(pa)=='' and raw(pa).strip()=='') or raw(pa)==' ') and not has_drawing(pa):
-   expected='Times New Roman' if abstract_idx is not None and i==abstract_idx+1 else '宋体'
+   expected=blank_expected_font(ps, i)
    fs=fonts(pa)
    valid_pmark=any(x[0].lower()=='pmark' and (one_font(x[1],expected) or (expected==chr(0x5b8b)+chr(0x4f53) and (x[1].get('eastAsia')==chr(0x5b8b)+chr(0x4f53) or x[1].get('cs')==chr(0x5b8b)+chr(0x4f53)))) and (x[2] in ('24', None)) for x in fs)
    run_fs=[x for x in fs if x[0].lower()=='run' and x[2] is not None] or ([] if valid_pmark else fs)

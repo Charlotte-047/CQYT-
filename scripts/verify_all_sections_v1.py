@@ -21,17 +21,22 @@ def main():
         # TOC is protected by default: preserve source TOC instead of rebuilding/reformatting it.
         ('verify_toc_preserved_v1.py',src,out),
         ('verify_headings_strict_v1.py',out),
+        ('verify_heading_alignment_strict_v1.py',out),
         ('verify_headings_against_source_v1.py',src,out),
         ('verify_skill_output_v1.py',out),
         ('audit_formatting_coverage_v1.py',src,out),
         ('diff_docx_text_v1.py',src,out),
         ('audit_docx_integrity_v1.py',out),
         ('inspect_media_tables.py',out),
+        ('verify_front_matter_strict_v1.py',[src,out]),
+        ('verify_table_three_line_strict_v1.py',out),
+        ('verify_figure_caption_strict_v1.py',out),
         ('verify_blank_single_font_v1.py',out),
         ('verify_strict_indent_blank_v1.py',out),
     ]
     for item in checks:
-        code=run(item[0],*item[1:])
+        args = item[1] if len(item)==2 and isinstance(item[1], (list, tuple)) else item[1:]
+        code=run(item[0],*args)
         if code!=0:
             failures.append((item[0],code))
     print('\nVERIFY_ALL_FAILURE_COUNT',len(failures))
